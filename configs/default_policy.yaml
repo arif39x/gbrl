@@ -1,0 +1,34 @@
+# GBRL Default Security Policy
+# Syscalls listed here will immediately kill the tracee.
+block_syscalls:
+  - SYS_SOCKET
+  - SYS_CONNECT
+  - SYS_BIND
+  - SYS_LISTEN
+  - SYS_ACCEPT
+  - SYS_ACCEPT4
+  - SYS_SENDTO
+  - SYS_RECVFROM
+  - SYS_SENDMSG
+  - SYS_RECVMSG
+
+# Filesystem access control – paths NOT in this list will be denied.
+# Leave empty to allow all paths .
+allow_fs:
+  - /tmp/
+  - /proc/self/
+  - /dev/null
+  - /dev/urandom
+  - /usr/lib/
+  - /usr/share/
+  - /lib/
+  - /lib64/
+
+# Heuristic ransomware detection settings.
+heuristic:
+  # Size of the sliding window in bytes for entropy calculation.
+  entropy_window: 8192
+  # Shannon entropy threshold (0–8). Writes above this are flagged.
+  entropy_threshold: 7.2
+  # Number of high-entropy write events before the process is frozen.
+  max_high_entropy_writes: 5
