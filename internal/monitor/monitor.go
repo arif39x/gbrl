@@ -69,7 +69,7 @@ var syscallNames = map[uint64]string{
 	24:  "SYS_SCHED_YIELD",
 	28:  "SYS_MADVISE",
 	32:  "SYS_DUP",
-	33:  "SYS_DUP2",
+	33:  "SYS_DUP2",~
 	39:  "SYS_GETPID",
 	41:  "SYS_SOCKET",
 	42:  "SYS_CONNECT",
@@ -150,6 +150,11 @@ type Config struct {
 	RingBuf *telemetry.RingBuffer[telemetry.LogEvent]
 	Entropy *heuristic.EntropyTracker
 	Logger  *log.Logger
+
+	// EventCh is an optional channel. When non-nil, handleEntry sends each
+	// intercepted LogEvent here (non-blocking drop on full) so a TUI or other
+	// consumer receives live events without polling the ring buffer.
+	EventCh chan<- telemetry.LogEvent
 }
 
 // Run is the main ptrace event loop. It blocks until the tracee exits.
@@ -289,6 +294,14 @@ func (cfg *Config) handleEntry(pid int, regs *syscall.PtraceRegs) policy.Action 
 		Action:      action.String(),
 	}
 	_ = cfg.RingBuf.Push(ev)
+
+	// Non-blocking send to the optional live-event channel.
+	if cfg.EventCh != nil {
+		select {
+		case cfg.EventCh <- ev:
+		default:
+		}
+	}
 
 	return action
 }

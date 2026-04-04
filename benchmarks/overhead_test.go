@@ -1,8 +1,6 @@
 // Package benchmarks measures the per-syscall overhead GBRL introduces
 // compared to a native subprocess execution.
 //
-// Methodology:
-//
 //	BenchmarkNative   — spawns /bin/true via exec.Command with no tracing.
 //	BenchmarkGBRL     — spawns /bin/true under the full GBRL ptrace loop.
 //

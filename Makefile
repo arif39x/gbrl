@@ -9,7 +9,8 @@ all: build
 build:
 	@mkdir -p $(BUILD_DIR)
 	go build -o $(BUILD_DIR)/$(BINARY) $(CMD_PKG)
-	@echo "Built $(BUILD_DIR)/$(BINARY)"
+	go build -o $(BUILD_DIR)/gbrl-tui ./cmd/gbrl-tui
+	@echo "Built $(BUILD_DIR)/$(BINARY) and $(BUILD_DIR)/gbrl-tui"
 
 test:
 	go test -race -v ./internal/...
