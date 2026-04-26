@@ -180,6 +180,9 @@ func main() {
 	var monitoredPID int
 	var pidMu sync.Mutex
 
+	var stepMode bool
+	stepCh := make(chan struct{})
+
 	// ── TUI construction ─────────────────────────────────────────────────────
 	app := tview.NewApplication()
 	app.EnableMouse(false)
@@ -283,6 +286,22 @@ func main() {
 	// ── Key bindings ─────────────────────────────────────────────────────────
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
+		case tcell.KeyF1: // Step Syscall
+			if !stepMode {
+				stepMode = true
+				app.QueueUpdateDraw(func() {
+					headerLeft.SetText("[cyan::b]GBRL[white] (General Binary Restractor & Logger) v1.0.0     [yellow::b][ STATUS: STEPPING ]")
+					ts := time.Now().Format("15:04:05.0")
+					fmt.Fprintf(logsView, "[%s] [yellow][STEP] Step mode enabled. Press F1 to step to next syscall.[white]\n", ts)
+				})
+			} else {
+				// We are already stepping, so advance one syscall.
+				select {
+				case stepCh <- struct{}{}:
+				default:
+					// If the monitor isn't waiting on stepCh yet (e.g., between syscalls), ignore.
+				}
+			}
 		case tcell.KeyF2: // SIGKILL
 			pidMu.Lock()
 			pid := monitoredPID
@@ -350,12 +369,14 @@ func main() {
 		itracker := &instrumentedTracker{inner: innerTracker, store: estore}
 
 		monCfg := monitor.Config{
-			PID:     pid,
-			Pol:     pol,
-			RingBuf: rb,
-			Entropy: itracker.inner,
-			Logger:  silentLogger,
-			EventCh: eventCh,
+			PID:      pid,
+			Pol:      pol,
+			RingBuf:  rb,
+			Entropy:  itracker.inner,
+			Logger:   silentLogger,
+			EventCh:  eventCh,
+			StepMode: &stepMode,
+			StepCh:   stepCh,
 		}
 
 		// Override Entropy with the instrumented wrapper — we shadow the field
@@ -393,9 +414,11 @@ func main() {
 				col := actionColor(e.Action)
 
 				// Resolved path / arg summary for display.
-				arg := fmt.Sprintf("arg0=0x%x", e.Args[0])
-				if e.Args[0] == 0 {
-					arg = ""
+				arg := ""
+				if e.ResolvedPath != "" {
+					arg = e.ResolvedPath
+				} else if e.Args[0] != 0 {
+					arg = fmt.Sprintf("arg0=0x%x", e.Args[0])
 				}
 
 				// Roll the table if full.

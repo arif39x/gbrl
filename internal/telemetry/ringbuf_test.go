@@ -15,7 +15,7 @@ func TestRingBuffer_PushPop(t *testing.T) {
 		}
 	}
 
-	// Buffer is full — next push must fail.
+	// Buffer is full(next push must fail.)
 	if err := rb.Push(99); err != telemetry.ErrFull {
 		t.Fatalf("expected ErrFull, got %v", err)
 	}
@@ -30,7 +30,7 @@ func TestRingBuffer_PushPop(t *testing.T) {
 		}
 	}
 
-	// Buffer is empty — next pop must fail.
+	// Buffer is empty (next pop must fail.)
 	if _, err := rb.Pop(); err != telemetry.ErrEmpty {
 		t.Fatalf("expected ErrEmpty, got %v", err)
 	}

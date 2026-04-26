@@ -1,5 +1,4 @@
-# GBRL Default Security Policy
-# Syscalls listed here will immediately kill the tracee.
+# Default Security Policy
 block_syscalls:
   - SYS_SOCKET
   - SYS_CONNECT
@@ -12,8 +11,8 @@ block_syscalls:
   - SYS_SENDMSG
   - SYS_RECVMSG
 
-# Filesystem access control – paths NOT in this list will be denied.
-# Leave empty to allow all paths .
+# Filesystem access control
+# Leave empty for allow all paths .
 allow_fs:
   - /tmp/
   - /proc/self/

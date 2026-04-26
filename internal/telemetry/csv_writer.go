@@ -1,6 +1,3 @@
-// Package telemetry provides CSV-based event logging backed by the lock-free
-// ring buffer. The CSV writer runs in its own goroutine, draining the buffer
-// and flushing records to disk without interfering with the tracer loop.
 package telemetry
 
 import (
@@ -13,13 +10,14 @@ import (
 
 // LogEvent captures a single syscall interception record.
 type LogEvent struct {
-	Timestamp   time.Time
-	PID         int
-	SyscallNr   uint64
-	SyscallName string
-	Args        [6]uint64
-	ReturnVal   uint64
-	Action      string // Allow | Kill | Freeze | Deny
+	Timestamp    time.Time
+	PID          int
+	SyscallNr    uint64
+	SyscallName  string
+	Args         [6]uint64
+	ReturnVal    uint64
+	Action       string // Allow | Kill | Freeze | Deny
+	ResolvedPath string
 }
 
 // CSVWriter drains a RingBuffer[LogEvent] and writes CSV rows to a file.
@@ -46,7 +44,7 @@ func NewCSVWriter(path string, rb *RingBuffer[LogEvent]) (*CSVWriter, error) {
 		_ = w.Write([]string{
 			"timestamp", "pid", "syscall_nr", "syscall_name",
 			"arg0", "arg1", "arg2", "arg3", "arg4", "arg5",
-			"return_val", "action",
+			"return_val", "action", "resolved_path",
 		})
 		w.Flush()
 	}
@@ -100,6 +98,7 @@ func (cw *CSVWriter) drain() {
 			fmt.Sprintf("%d", ev.Args[5]),
 			fmt.Sprintf("%d", ev.ReturnVal),
 			ev.Action,
+			ev.ResolvedPath,
 		}
 		_ = cw.w.Write(row)
 	}

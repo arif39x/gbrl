@@ -1,6 +1,4 @@
 // Package monitor implements the core ptrace event loop.
-//
-// OS Theory – The ptrace State Machine:
 // After the tracer calls PTRACE_SYSCALL, the child runs until it reaches
 // either a syscall ENTRY or EXIT boundary, at which point the kernel sends
 // SIGTRAP to the tracer (wait4 returns). Each stop is one half of a boundary:
@@ -69,7 +67,7 @@ var syscallNames = map[uint64]string{
 	24:  "SYS_SCHED_YIELD",
 	28:  "SYS_MADVISE",
 	32:  "SYS_DUP",
-	33:  "SYS_DUP2",~
+	33:  "SYS_DUP2",
 	39:  "SYS_GETPID",
 	41:  "SYS_SOCKET",
 	42:  "SYS_CONNECT",
@@ -155,6 +153,10 @@ type Config struct {
 	// intercepted LogEvent here (non-blocking drop on full) so a TUI or other
 	// consumer receives live events without polling the ring buffer.
 	EventCh chan<- telemetry.LogEvent
+
+	// StepMode, if true, will block on StepCh before each ptrace continuation.
+	StepMode *bool
+	StepCh   <-chan struct{}
 }
 
 // Run is the main ptrace event loop. It blocks until the tracee exits.
@@ -170,6 +172,10 @@ func Run(cfg Config) error {
 	inSyscall := false // toggles between entry and exit half
 
 	for {
+		if cfg.StepMode != nil && *cfg.StepMode && cfg.StepCh != nil {
+			<-cfg.StepCh
+		}
+
 		// Resume child: run until next syscall boundary.
 		if err := syscall.PtraceSyscall(pid, 0); err != nil {
 			return fmt.Errorf("PtraceSyscall: %w", err)
@@ -286,12 +292,13 @@ func (cfg *Config) handleEntry(pid int, regs *syscall.PtraceRegs) policy.Action 
 
 	// Log the entry event to the ring buffer (non-blocking).
 	ev := telemetry.LogEvent{
-		Timestamp:   time.Now(),
-		PID:         pid,
-		SyscallNr:   nr,
-		SyscallName: name,
-		Args:        args,
-		Action:      action.String(),
+		Timestamp:    time.Now(),
+		PID:          pid,
+		SyscallNr:    nr,
+		SyscallName:  name,
+		Args:         args,
+		Action:       action.String(),
+		ResolvedPath: ctx.ResolvedPath,
 	}
 	_ = cfg.RingBuf.Push(ev)
 
