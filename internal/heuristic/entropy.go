@@ -1,17 +1,6 @@
 // Package heuristic implements Shannon-entropy based ransomware detection.
-//
-// Research Context
-// Shannon entropy H(X) = -Σ p(x) log₂ p(x) where the sum is over all 256
-// possible byte values. Random / encrypted / compressed data has H ≈ 8 bits
-// per byte. Ransomware exhibits a characteristic burst pattern: many write(2)
-// calls across different file descriptors with near-maximum entropy content,
-// occurring densely in time (encrypting a subtree quickly to maximise damage
-// before detection).
-//
-// GBRL's detector maintains per-FD sliding state. When a process exceeds the
-// configured threshold of high-entropy write events it is flagged for Freeze:
-// the ptrace lock holds the child in stopped state while the operator receives
-// an alert, preserving forensic state without allowing further encryption.
+// It monitors write(2) calls for high-entropy content, which often indicates
+// encryption activity.
 package heuristic
 
 import (
@@ -19,12 +8,12 @@ import (
 	"sync"
 )
 
-// EntropyThreshold is the default Shannon entropy above which a write is
-// considered "high entropy" (fully encrypted content approaches 8.0).
+// EntropyThreshold defines the Shannon entropy level above which data is
+// considered high-entropy (fully encrypted content approaches 8.0).
 const EntropyThreshold = 7.2
 
-// ShannonEntropy computes the Shannon entropy (bits per byte) of buf.
-// Returns 0 for empty input.
+// ShannonEntropy calculates the Shannon entropy in bits per byte for buf.
+// It returns 0 for empty input.
 func ShannonEntropy(buf []byte) float64 {
 	if len(buf) == 0 {
 		return 0
@@ -45,13 +34,13 @@ func ShannonEntropy(buf []byte) float64 {
 	return entropy
 }
 
-// fdState tracks high-entropy write count for a single file descriptor.
+// fdState tracks the high-entropy write count for a file descriptor.
 type fdState struct {
 	count int
 }
 
-// EntropyTracker maintains per-FD write entropy state across the lifetime
-// of a process. It is safe for concurrent use.
+// EntropyTracker maintains per-FD write entropy state across a process's lifetime.
+// It is safe for concurrent use.
 type EntropyTracker struct {
 	mu        sync.Mutex
 	fds       map[uint64]*fdState
@@ -59,7 +48,7 @@ type EntropyTracker struct {
 	maxHits   int
 }
 
-// NewEntropyTracker creates a tracker with configurable parameters.
+// NewEntropyTracker returns a tracker with the specified threshold and hit limit.
 func NewEntropyTracker(threshold float64, maxHits int) *EntropyTracker {
 	return &EntropyTracker{
 		fds:       make(map[uint64]*fdState),
@@ -68,8 +57,8 @@ func NewEntropyTracker(threshold float64, maxHits int) *EntropyTracker {
 	}
 }
 
-// Observe records a write of buf to fd. Returns true when the cumulative
-// high-entropy write count for that fd crosses the alarm threshold.
+// Observe records a write to fd and returns true if the cumulative high-entropy
+// write count for that fd reaches the alarm threshold.
 func (et *EntropyTracker) Observe(fd uint64, buf []byte) bool {
 	h := ShannonEntropy(buf)
 	if h < et.threshold {
@@ -86,7 +75,7 @@ func (et *EntropyTracker) Observe(fd uint64, buf []byte) bool {
 	return s.count >= et.maxHits
 }
 
-// Reset clears state for an fd (e.g. after it is closed).
+// Reset clears the tracked state for an fd.
 func (et *EntropyTracker) Reset(fd uint64) {
 	et.mu.Lock()
 	delete(et.fds, fd)

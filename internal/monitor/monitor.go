@@ -1,29 +1,21 @@
-// Package monitor implements the core ptrace event loop.
-// After the tracer calls PTRACE_SYSCALL, the child runs until it reaches
-// either a syscall ENTRY or EXIT boundary, at which point the kernel sends
-// SIGTRAP to the tracer (wait4 returns). Each stop is one half of a boundary:
+// Package monitor provides the core ptrace-based syscall interception engine.
+// It manages the tracee's execution by trapping at every syscall boundary
+// (entry and exit) to inspect state, enforce policies, and perform memory
+// forensics.
 //
-//	Entry stop  → ORIG_RAX holds the syscall number; RDI–R9 hold arguments.
-//	              We can MODIFY registers here (TOCTOU mitigation: replace
-//	              pointer argument with our safe copy).
-//	Exit stop   → RAX holds the kernel's return value. We can observe the
-//	              actual outcome and perform memory forensics.
+// Syscall lifecycle:
 //
-// Signal handling:
+//	Entry Stop: The tracee is halted before the kernel executes the syscall.
+//	            At this point, we can inspect and even modify arguments
+//	            (e.g., to redirect file paths or prevent TOCTOU races).
 //
-//	A genuine SIGTRAP from a breakpoint or INT3 looks identical to a syscall
-//	stop from the tracer's perspective unless we use PTRACE_O_TRACESYSGOOD,
-//	which ORs 0x80 into the signal number for syscall stops, giving us
-//	SIGTRAP|0x80. We use this flag so hardware exceptions (SIGSEGV, SIGILL,
-//	SIGBUS) are never misclassified.
+//	Exit Stop:  The tracee is halted after the kernel completes the syscall.
+//	            The return value is available in RAX, allowing us to log the
+//	            actual outcome or react to errors.
 //
-// TOCTOU mitigation:
-//
-//	Between entry and exit we read the path argument via process_vm_readv,
-//	validate it against the policy trie, then write the canonical form back
-//	into a pre-allocated mmap page in the child and point RDI at that page.
-//	The kernel then executes the syscall against our immutable copy — a race
-//	on the original memory cannot affect the kernel's actual argument.
+// We use PTRACE_O_TRACESYSGOOD to ensure that syscall-related stops are
+// clearly distinguishable from hardware exceptions and other signals by
+// having bit 7 set in the signal number (SIGTRAP | 0x80).
 package monitor
 
 import (
@@ -159,7 +151,9 @@ type Config struct {
 	StepCh   <-chan struct{}
 }
 
-// Run is the main ptrace event loop. It blocks until the tracee exits.
+// Run enters the primary ptrace event loop. It will block, handling every
+// syscall from the tracee, until the process either exits or is terminated
+// by a policy violation.
 func Run(cfg Config) error {
 	pid := cfg.PID
 
@@ -232,6 +226,16 @@ func Run(cfg Config) error {
 					// Park the child in stopped state indefinitely.
 					select {}
 				}
+				if action == policy.ActionDump {
+					cfg.Logger.Printf("[DUMP] pid=%d memory dump triggered by policy", pid)
+					go func(pid int) {
+						if path, err := memory.DumpToDir(pid); err != nil {
+							cfg.Logger.Printf("[DUMP] pid=%d failed: %v", pid, err)
+						} else {
+							cfg.Logger.Printf("[DUMP] pid=%d written to %s", pid, path)
+						}
+					}(pid)
+				}
 			} else {
 				// --- SYSCALL EXIT ---
 				inSyscall = false
@@ -248,8 +252,9 @@ func Run(cfg Config) error {
 	}
 }
 
-// handleEntry processes the syscall-entry stop, inspects arguments, evaluates
-// the policy, and returns the decided Action.
+// handleEntry is called when the tracee stops at a syscall entry. It
+// reconstructs the syscall context, extracts any relevant arguments (like
+// file paths), and asks the policy engine for a decision.
 func (cfg *Config) handleEntry(pid int, regs *syscall.PtraceRegs) policy.Action {
 	nr := regs.Orig_rax
 	name := syscallName(nr)

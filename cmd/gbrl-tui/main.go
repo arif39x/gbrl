@@ -1,14 +1,13 @@
-// GBRL TUI – General Binary Restractor & Logger
-// Production terminal user interface built on github.com/rivo/tview.
+// GBRL TUI (General Binary Restractor & Logger)
+// This is the primary terminal interface for real-time monitoring of
+// sandboxed processes. It provides a live view of syscall activity,
+// entropy analysis, and security alerts.
 //
-// Architecture:
-//
-//	main goroutine  → app.Run() drives the tview event loop (blocks).
-//	monitor goroutine → launcher.Start + monitor.Run; sends LogEvents on eventCh.
-//	drain goroutine → ranges over eventCh; calls app.QueueUpdateDraw to update
-//	                  traceTable and logsView safely from off the main thread.
-//	entropy goroutine → polls the EntropyTracker snapshot every 500 ms and
-//	                    refreshes the entropyTable via app.QueueUpdateDraw.
+// Threading Model:
+//   - Main: Runs the tview event loop and handles UI rendering.
+//   - Monitor: Executes the launcher and ptrace loop; pushes events to eventCh.
+//   - UI Updater: Drains eventCh and safely updates UI components.
+//   - Analysis: Periodically polls entropy data and refreshes the dashboard.
 package main
 
 import (
@@ -24,6 +23,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/local/gbrl/internal/heuristic"
 	"github.com/local/gbrl/internal/launcher"
+	"github.com/local/gbrl/internal/memory"
 	"github.com/local/gbrl/internal/monitor"
 	"github.com/local/gbrl/internal/policy"
 	"github.com/local/gbrl/internal/telemetry"
@@ -39,8 +39,8 @@ type fdEntropyEntry struct {
 	Hits    int
 }
 
-// entropyStore is a thread-safe map FD → fdEntropyEntry updated on every
-// high-entropy Observe(). The TUI polls this on a ticker.
+// entropyStore acts as a thread-safe cache for the latest entropy readings
+// per file descriptor. The TUI polls this store to refresh the dashboard.
 type entropyStore struct {
 	mu      sync.Mutex
 	entries map[uint64]*fdEntropyEntry
@@ -76,8 +76,9 @@ func (s *entropyStore) snapshot() []fdEntropyEntry {
 
 // ─── Instrumented EntropyTracker wrapper ─────────────────────────────────────
 
-// instrumentedTracker wraps heuristic.EntropyTracker to capture entropy values
-// that the monitor calculates so the TUI can display them.
+// instrumentedTracker is a decorator for heuristic.EntropyTracker that
+// captures calculated entropy values for UI display without changing the
+// underlying detection logic.
 type instrumentedTracker struct {
 	inner *heuristic.EntropyTracker
 	store *entropyStore
@@ -313,11 +314,23 @@ func main() {
 					fmt.Fprintf(logsView, "[%s] [red][KILL] Sent SIGKILL to PID %d[white]\n", ts, pid)
 				})
 			}
-		case tcell.KeyF3: // Memory dump (stub)
-			ts := time.Now().Format("15:04:05.0")
-			app.QueueUpdateDraw(func() {
-				fmt.Fprintf(logsView, "[%s] [yellow][DUMP] Memory dump requested — see /tmp/gbrl_mem.bin[white]\n", ts)
-			})
+		case tcell.KeyF3: // Memory dump
+			pidMu.Lock()
+			pid := monitoredPID
+			pidMu.Unlock()
+			if pid > 0 {
+				go func() {
+					path, err := memory.DumpToDir(pid)
+					ts := time.Now().Format("15:04:05.0")
+					app.QueueUpdateDraw(func() {
+						if err != nil {
+							fmt.Fprintf(logsView, "[%s] [red][DUMP] Memory dump failed: %v[white]\n", ts, err)
+						} else {
+							fmt.Fprintf(logsView, "[%s] [yellow][DUMP] Memory dump written to %s[white]\n", ts, path)
+						}
+					})
+				}()
+			}
 		case tcell.KeyRune:
 			if event.Rune() == 'q' || event.Rune() == 'Q' {
 				pidMu.Lock()

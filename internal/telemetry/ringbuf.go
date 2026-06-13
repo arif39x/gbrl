@@ -1,12 +1,7 @@
-// Package telemetry provides a lock-free ring buffer for non-blocking
-// event logging in the hot ptrace path.
-// Each syscall stop already incurs ~1–2 µs of kernel round-trip
-// latency (context switch into the kernel, wait4 wakeup, register read).
-// Any blocking mutex inside the event-logging path would serialize multiple
-// tracee threads and amplify that latency. A power-of-2 ring buffer with
-// sync/atomic head/tail cursors provides SPSC (single-producer /
-// single-consumer) lock-free semantics the monitor goroutine pushes without
-// ever blocking, and the CSV writer goroutine drains at its own pace.
+// Package telemetry implements a lock-free, single-producer single-consumer (SPSC)
+// ring buffer for non-blocking event logging. It minimizes latency in the hot
+// ptrace path by avoiding mutex serialization between tracee threads and
+// the telemetry drainer.
 package telemetry
 
 import (
@@ -14,14 +9,14 @@ import (
 	"sync/atomic"
 )
 
-// ErrFull is returned by Push when the buffer has no free slots.
+// ErrFull indicates the buffer has no free slots.
 var ErrFull = errors.New("ring buffer full")
 
-// ErrEmpty is returned by Pop when no events are available.
+// ErrEmpty indicates no events are available for consumption.
 var ErrEmpty = errors.New("ring buffer empty")
 
 // RingBuffer is a generic lock-free SPSC ring buffer.
-// Capacity MUST be a power of two.
+// Capacity must be a power of two.
 type RingBuffer[T any] struct {
 	buf  []T
 	mask uint64
@@ -29,8 +24,8 @@ type RingBuffer[T any] struct {
 	tail atomic.Uint64 // written by consumer
 }
 
-// NewRingBuffer creates a RingBuffer with the given capacity.
-// Panics if cap is not a power of two or is zero.
+// NewRingBuffer returns a new RingBuffer with the specified capacity.
+// It panics if cap is zero or not a power of two.
 func NewRingBuffer[T any](cap uint64) *RingBuffer[T] {
 	if cap == 0 || (cap&(cap-1)) != 0 {
 		panic("ring buffer capacity must be a non-zero power of two")
@@ -41,8 +36,8 @@ func NewRingBuffer[T any](cap uint64) *RingBuffer[T] {
 	}
 }
 
-// Push enqueues an item without blocking.
-// Returns ErrFull if the buffer is at capacity.
+// Push adds an item to the buffer without blocking.
+// It returns ErrFull if the buffer is at capacity.
 func (r *RingBuffer[T]) Push(item T) error {
 	head := r.head.Load()
 	tail := r.tail.Load()
@@ -54,8 +49,8 @@ func (r *RingBuffer[T]) Push(item T) error {
 	return nil
 }
 
-// Pop dequeues an item without blocking.
-// Returns ErrEmpty if the buffer is empty.
+// Pop removes and returns an item from the buffer without blocking.
+// It returns ErrEmpty if the buffer is empty.
 func (r *RingBuffer[T]) Pop() (T, error) {
 	var zero T
 	tail := r.tail.Load()
@@ -67,7 +62,7 @@ func (r *RingBuffer[T]) Pop() (T, error) {
 	return item, nil
 }
 
-// Len returns an approximate count of queued items.
+// Len returns the approximate number of queued items.
 func (r *RingBuffer[T]) Len() int {
 	return int(r.head.Load() - r.tail.Load())
 }

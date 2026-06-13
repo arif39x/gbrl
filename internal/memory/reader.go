@@ -1,17 +1,6 @@
-// Package memory provides safe, high-speed extraction of data from a tracee's
-// virtual address space using process_vm_readv(2).
-//
-// OS Theory
-// The traditional approach to reading a tracee's memory is PTRACE_PEEKDATA,
-// which copies a single machine word (8 bytes) per syscall round-trip. Reading
-// a 4096-byte pathname that way costs 512 kernel transitions — roughly 1 ms.
-//
-// process_vm_readv(2), introduced in Linux 3.2, performs scatter-gather I/O
-// between two processes' virtual address spaces using the kernel's own page-
-// table walk. The data is transferred entirely in the kernel half of the
-// virtual-address mapping with no intermediate copy through the tracer's user-
-// space stack. A single call reads megabytes with one syscall — ~10× faster
-// than PTRACE_PEEKDATA for string arguments.
+// Package memory implements high-speed data extraction from a tracee's
+// address space using process_vm_readv(2). This avoids the overhead
+// of multiple PTRACE_PEEKDATA calls.
 package memory
 
 import (
@@ -22,7 +11,7 @@ import (
 
 const maxStringLen = 4096
 
-// ReadBytes copies n bytes from addr in process pid into a fresh slice.
+// ReadBytes copies n bytes from addr in process pid into a new slice.
 func ReadBytes(pid int, addr uintptr, n int) ([]byte, error) {
 	if n <= 0 {
 		return nil, nil
@@ -46,7 +35,7 @@ func ReadBytes(pid int, addr uintptr, n int) ([]byte, error) {
 }
 
 // ReadString reads a null-terminated C string from addr in process pid.
-// It reads up to maxStringLen bytes to find the terminator.
+// It reads up to maxStringLen bytes.
 func ReadString(pid int, addr uintptr) (string, error) {
 	if addr == 0 {
 		return "", nil

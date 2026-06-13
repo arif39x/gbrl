@@ -1,10 +1,6 @@
-// Package policy provides a compressed Prefix Trie (Patricia Tree) for
-// O(k) filesystem path validation, where k is the depth of the path.
-// File access exploits frequently use directory traversal (../../etc/passwd)
-// or symlink confusion. Before inserting a path into the Trie, we resolve it
-// through filepath.EvalSymlinks + filepath.Clean, converting it to a
-// canonical absolute form. The Trie then operates on the clean form,
-// making traversal attacks structurally impossible rather than pattern-matched.
+// Package policy implements a compressed prefix trie for efficient
+// filesystem path validation. It uses canonical paths to prevent
+// traversal and symlink attacks.
 package policy
 
 import (
@@ -12,24 +8,23 @@ import (
 	"strings"
 )
 
-// trieNode is a single node in the compressed prefix trie.
+// trieNode represents a single segment in the path trie.
 type trieNode struct {
 	children map[string]*trieNode
 	terminal bool // true if a policy entry ends exactly here
 }
 
-// Trie is a prefix trie of allowed filesystem paths.
+// Trie stores allowed filesystem paths for prefix-based matching.
 type Trie struct {
 	root *trieNode
 }
 
-// NewTrie returns an initialised, empty Trie.
+// NewTrie returns an initialized, empty Trie.
 func NewTrie() *Trie {
 	return &Trie{root: &trieNode{children: make(map[string]*trieNode)}}
 }
 
-// Insert adds a path prefix into the trie.
-// Trailing slashes are treated as "allow entire subtree."
+// Insert adds a path to the trie. Subtree access is allowed for terminal nodes.
 func (t *Trie) Insert(path string) {
 	path = filepath.Clean(path)
 	parts := splitPath(path)
@@ -45,8 +40,8 @@ func (t *Trie) Insert(path string) {
 	node.terminal = true
 }
 
-// IsAllowed returns true if path
-// is an allowed prefix. An empty trie allows everything.
+// IsAllowed returns true if the path matches an allowed prefix.
+// An empty trie imposes no restrictions and returns true.
 func (t *Trie) IsAllowed(path string) bool {
 	// Empty trie ⟹ no restrictions — allow all.
 	if len(t.root.children) == 0 {

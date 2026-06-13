@@ -1,3 +1,6 @@
+// Package telemetry provides event logging and export facilities, including
+// a lock-free ring buffer for high-frequency telemetry and a CSV writer for
+// post-hoc analysis of collected events.
 package telemetry
 
 import (
@@ -8,7 +11,7 @@ import (
 	"time"
 )
 
-// LogEvent captures a single syscall interception record.
+// LogEvent represents a single recorded syscall interception.
 type LogEvent struct {
 	Timestamp    time.Time
 	PID          int
@@ -20,7 +23,7 @@ type LogEvent struct {
 	ResolvedPath string
 }
 
-// CSVWriter drains a RingBuffer[LogEvent] and writes CSV rows to a file.
+// CSVWriter consumes LogEvents from a RingBuffer and persists them to a CSV file.
 type CSVWriter struct {
 	rb   *RingBuffer[LogEvent]
 	w    *csv.Writer
@@ -29,7 +32,7 @@ type CSVWriter struct {
 	wg   sync.WaitGroup
 }
 
-// NewCSVWriter opens path for appending and returns a CSVWriter.
+// NewCSVWriter initializes a CSVWriter that appends events to the specified file.
 func NewCSVWriter(path string, rb *RingBuffer[LogEvent]) (*CSVWriter, error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
@@ -51,7 +54,7 @@ func NewCSVWriter(path string, rb *RingBuffer[LogEvent]) (*CSVWriter, error) {
 	return cw, nil
 }
 
-// Start launches the background drain goroutine.
+// Start begins draining the ring buffer in a background goroutine.
 func (cw *CSVWriter) Start() {
 	cw.wg.Add(1)
 	go func() {
@@ -73,7 +76,7 @@ func (cw *CSVWriter) Start() {
 	}()
 }
 
-// Stop signals the writer to flush and exit.
+// Stop flushes all pending events and closes the log file.
 func (cw *CSVWriter) Stop() {
 	close(cw.done)
 	cw.wg.Wait()

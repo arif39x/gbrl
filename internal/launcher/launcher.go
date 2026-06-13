@@ -1,32 +1,6 @@
-// Package launcher sets up process isolation and spawns the tracee under ptrace.
-//
-// OS Theory – Namespace
-// Linux namespaces partition global kernel resources into per-process views:
-//
-//	CLONE_NEWNS  (mount)  — gives the child an independent mount table. Any
-//	  mounts the child makes (or that malware attempts) are invisible to the
-//	  host.
-//
-//	CLONE_NEWNET (network) — the child receives a fresh network stack with
-//	  only lo (loopback). It cannot reach the internet unless the host
-//	  explicitly sets up a veth pair — our default policy blocks this.
-//
-//	CLONE_NEWPID (PID)    — the child's PID namespace starts at PID 1. Its
-//	  view of /proc shows only its own subtree; it cannot iterate host PIDs.
-//
-// Ptrace bootstrap:
-//
-//	SysProcAttr{Ptrace: true} causes the kernel to deliver SIGSTOP to the
-//	child immediately after execve(2), before any user-space instruction runs.
-//	The parent's Wait4 receives this stop and transfers control to the monitor
-//	loop, which arms PTRACE_SYSCALL to intercept every subsequent boundary.
-//
-//	Setpgid: true places the child in its own process group, ensuring that
-//	Ctrl-C (SIGINT) sent to the terminal's foreground process group does not
-//	leak into the tracee — the tracer handles termination explicitly.
-//
-//	Credential drops to nobody (UID/GID 65534) before exec, applying the
-//	principle of least privilege to the sandboxed binary.
+// Package launcher configures process isolation and spawns the tracee under ptrace.
+// It uses Linux namespaces and ptrace bootstrapping to ensure the sandboxed process
+// starts in a controlled state.
 package launcher
 
 import (
@@ -38,19 +12,19 @@ import (
 const nobodyUID = 65534
 const nobodyGID = 65534
 
-// Config holds the settings for launching a tracee.
+// Config defines settings for launching a tracee.
 type Config struct {
-	// Args is [binary, arg1, arg2, ...] of the command to sandbox.
+	// Args contains the command and its arguments.
 	Args []string
 
-	// Namespaces controls which Linux namespaces to unshare.
+	// Namespaces specify which Linux namespaces to unshare.
 	IsolateMount   bool
 	IsolateNetwork bool
 	IsolatePID     bool
 }
 
-// Start launches the tracee process in the configured namespaces and returns
-// its PID. The child halts at its first instruction; call monitor.Run next.
+// Start spawns the tracee process in configured namespaces.
+// The process halts at its first instruction.
 func Start(cfg Config) (int, error) {
 	if len(cfg.Args) == 0 {
 		return 0, fmt.Errorf("launcher: no command specified")
@@ -73,10 +47,6 @@ func Start(cfg Config) (int, error) {
 		Ptrace:     true,       // halt child at first execve stop
 		Setpgid:    true,       // isolate process group (prevent signal leakage)
 		Cloneflags: cloneFlags, // namespace isolation
-		// Credential: &syscall.Credential{
-		// 	Uid: nobodyUID,
-		// 	Gid: nobodyGID,
-		// },
 	}
 
 	if err := cmd.Start(); err != nil {

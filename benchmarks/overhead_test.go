@@ -1,17 +1,5 @@
-// Package benchmarks measures the per-syscall overhead GBRL introduces
-// compared to a native subprocess execution.
-//
-//	BenchmarkNative   — spawns /bin/true via exec.Command with no tracing.
-//	BenchmarkGBRL     — spawns /bin/true under the full GBRL ptrace loop.
-//
-// Both benchmarks run b.N iterations so that go test normalises to ns/op.
-// The delta (GBRL - Native) attributable to ptrace overhead is:
-//
-//	Δ = (GBRL ns/op) − (Native ns/op)
-//
-// Expected result on modern hardware: ~500 µs – 2 ms per /bin/true run
-// (dominated by ptrace context switch + wait4 pairs), scaling linearly with
-// the number of syscalls the child makes.
+// Package benchmarks compares the per-syscall overhead of GBRL against
+// native subprocess execution.
 package benchmarks
 
 import (
@@ -27,7 +15,7 @@ import (
 	"github.com/local/gbrl/internal/telemetry"
 )
 
-// BenchmarkNative measures bare subprocess execution cost.
+// BenchmarkNative measures the cost of bare subprocess execution.
 func BenchmarkNative(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
@@ -38,8 +26,8 @@ func BenchmarkNative(b *testing.B) {
 	}
 }
 
-// BenchmarkGBRL measures the same command through the full ptrace loop.
-// Must be run with CAP_SYS_PTRACE (i.e. sudo or a privileged test user).
+// BenchmarkGBRL measures command execution through the full GBRL ptrace loop.
+// It requires CAP_SYS_PTRACE privileges.
 func BenchmarkGBRL(b *testing.B) {
 	pol, _ := policy.Load("") // open (allow-all) policy
 	logger := log.New(os.Stderr, "", 0)

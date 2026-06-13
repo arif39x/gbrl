@@ -1,6 +1,6 @@
-// Package policy provides the YAML-driven security policy engine for GBRL.
-// It decodes a policy file, builds a Trie from allowed paths, and evaluates
-// every syscall interception against the configured rules.
+// Package policy implements the security rules engine for GBRL. It translates
+// YAML-defined rules into optimized lookup structures, like tries for path
+// validation, and evaluates every intercepted syscall against these rules.
 package policy
 
 import (
@@ -10,16 +10,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Action describes what the monitor should do with a syscall event.
+// Action defines how the monitor should respond to a policy hit.
 type Action int
 
 const (
-	ActionAllow  Action = iota
-	ActionKill          // send SIGKILL to tracee
-	ActionFreeze        // hold ptrace lock; alert operator
-	ActionDeny          // suppress the syscall (set return to -EPERM)
+	// ActionAllow lets the syscall proceed normally.
+	ActionAllow Action = iota
+	// ActionKill terminates the tracee immediately via SIGKILL.
+	ActionKill
+	// ActionFreeze suspends the tracee to allow for manual inspection.
+	ActionFreeze
+	// ActionDeny blocks the syscall, forcing it to return an error like -EPERM.
+	ActionDeny
+	// ActionDump triggers a full memory dump for forensic analysis.
+	ActionDump
 )
 
+// String returns the human-readable name of the Action.
 func (a Action) String() string {
 	switch a {
 	case ActionAllow:
@@ -30,6 +37,8 @@ func (a Action) String() string {
 		return "Freeze"
 	case ActionDeny:
 		return "Deny"
+	case ActionDump:
+		return "Dump"
 	default:
 		return "Unknown"
 	}
