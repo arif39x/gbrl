@@ -6,6 +6,7 @@ package executor
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/tetratelabs/wazero"
@@ -173,6 +174,22 @@ func (g *GuestExecutor) ReadGuestMemory(addr uint32, n uint32) ([]byte, error) {
 	buf := make([]byte, len(data))
 	copy(buf, data)
 	return buf, nil
+}
+
+func (g *GuestExecutor) DumpMemory(path string) error {
+	if g.module == nil {
+		return fmt.Errorf("executor: not loaded")
+	}
+	mem := g.module.Memory()
+	if mem == nil {
+		return fmt.Errorf("executor: no memory")
+	}
+	size := mem.Size()
+	data, ok := mem.Read(0, size)
+	if !ok {
+		return fmt.Errorf("executor: read memory at 0 size=%d: out of bounds", size)
+	}
+	return os.WriteFile(path, data, 0644)
 }
 
 func (g *GuestExecutor) PID() int32 {

@@ -6,9 +6,12 @@ gbrl_trace.csv
 vendor/
 *.exe
 *.test
+*.test.exe
 *.prof
+*.out
 .DS_Store
 .idea/
 *.wasm
-*_test.go
 testdata/
+gbrl-wasm
+gbrl-malclass
