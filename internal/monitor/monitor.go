@@ -27,7 +27,6 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/local/gbrl/internal/heuristic"
 	"github.com/local/gbrl/internal/memory"
 	"github.com/local/gbrl/internal/policy"
 	"github.com/local/gbrl/internal/telemetry"
@@ -133,12 +132,19 @@ func syscallName(nr uint64) string {
 	return fmt.Sprintf("SYS_%d", nr)
 }
 
+// EntropyObserver is the interface for entropy-based ransomware detection.
+// *heuristic.EntropyTracker satisfies this interface.
+type EntropyObserver interface {
+	Observe(fd uint64, buf []byte) bool
+	Reset(fd uint64)
+}
+
 // Config holds all runtime parameters for the monitor.
 type Config struct {
 	PID     int
 	Pol     *policy.Policy
 	RingBuf *telemetry.RingBuffer[telemetry.LogEvent]
-	Entropy *heuristic.EntropyTracker
+	Entropy EntropyObserver
 	Logger  *log.Logger
 
 	// EventCh is an optional channel. When non-nil, handleEntry sends each
@@ -215,9 +221,10 @@ func Run(cfg Config) error {
 				if action == policy.ActionDeny {
 					// Overwrite syscall number with -1 (invalid) so the kernel
 					// returns -ENOSYS without executing anything.
+					name := syscallName(regs.Orig_rax)
 					regs.Orig_rax = ^uint64(0)
 					_ = syscall.PtraceSetRegs(pid, &regs)
-					cfg.Logger.Printf("[DENY] pid=%d %s", pid, syscallName(regs.Orig_rax))
+					cfg.Logger.Printf("[DENY] pid=%d %s", pid, name)
 				}
 				if action == policy.ActionFreeze {
 					cfg.Logger.Printf("[FREEZE] pid=%d – high-entropy writes detected", pid)

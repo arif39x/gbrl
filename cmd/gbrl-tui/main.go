@@ -174,7 +174,6 @@ func main() {
 		pol.Heuristic.EntropyThreshold,
 		pol.Heuristic.MaxHighEntropyWrites,
 	)
-	_ = innerTracker // used via instrumentedTracker below
 
 	// ── Event channel ────────────────────────────────────────────────────────
 	eventCh := make(chan telemetry.LogEvent, 512)
@@ -385,21 +384,12 @@ func main() {
 			PID:      pid,
 			Pol:      pol,
 			RingBuf:  rb,
-			Entropy:  itracker.inner,
+			Entropy:  itracker,
 			Logger:   silentLogger,
 			EventCh:  eventCh,
 			StepMode: &stepMode,
 			StepCh:   stepCh,
 		}
-
-		// Override Entropy with the instrumented wrapper — we shadow the field
-		// by setting monitor.Config.Entropy to the inner tracker (already done)
-		// and we rely on our instrumentedTracker being called from handleEntry.
-		// Since monitor.Config.Entropy is type *heuristic.EntropyTracker, we
-		// cannot substitute our wrapper directly. Instead, we register a
-		// post-process goroutine that re-evaluates entropy for SYS_WRITE events
-		// coming through eventCh (duplicated below in drain goroutine).
-		_ = itracker
 
 		if err := monitor.Run(monCfg); err != nil {
 			app.QueueUpdateDraw(func() {

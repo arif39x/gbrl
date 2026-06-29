@@ -1,11 +1,20 @@
 # gbrl
 
-![gbrl logo](assets/logo.png)
+<p align="center">
+  <img src="assets/logo.png" alt="gbrl logo" width="180">
+</p>
 
-![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)
-![Platform](https://img.shields.io/badge/platform-linux%20%7C%20wasm-brightgreen)
-![Wazero](https://img.shields.io/badge/wazero-1.12-8A2BE2)
-![TUI](https://img.shields.io/badge/TUI-tview%20%7C%20tcell-ff69b4)
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go" alt="Go 1.26">
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20WASM-brightgreen?style=for-the-badge&logo=linux" alt="Platform">
+  <img src="https://img.shields.io/badge/runtime-wazero%201.12-8A2BE2?style=for-the-badge" alt="Wazero">
+  <img src="https://img.shields.io/badge/TUI-tview%20%7C%20tcell-ff69b4?style=for-the-badge" alt="TUI">
+  <br>
+  <img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License">
+  <img src="https://img.shields.io/badge/status-production%20ready-success?style=for-the-badge" alt="Status">
+  <img src="https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge&logo=github" alt="Build">
+</p>
+
 **gbrl** (General Binary Restractor & Logger) is a cross-platform behavioral analysis engine built in pure Go. It combines a Linux `ptrace`-based sandbox for native binaries with a WASM runtime that intercepts WASI system calls — enabling sandboxed execution of untrusted code on any platform.
 
 ## Modes
@@ -86,4 +95,13 @@ key_stealer.wasm: suspicious (60%)
 
 ## Architecture
 
-Detailed design is documented in `ARCHITECTURE.md`.
+The engine is composed of layered internal packages:
+
+- **`internal/launcher`** — Spawns a child process under ptrace with optional namespace isolation
+- **`internal/monitor`** — Ptrace event loop handling syscall entry/exit, policy evaluation, and memory forensics
+- **`internal/memory`** — Tracee memory access via `process_vm_readv` and memory dump facilities
+- **`internal/policy`** — YAML-defined security policy with blocked-syscall maps and prefix trie for filesystem paths
+- **`internal/heuristic`** — Shannon entropy-based ransomware detection with per-FD tracking
+- **`internal/executor`** — WASM guest lifecycle using wazero with custom WASI function overrides
+- **`internal/interceptor`** — Syscall interception interface for WASI hooks
+- **`internal/telemetry`** — Lock-free ring buffer for event logging and async CSV writer

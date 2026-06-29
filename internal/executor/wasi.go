@@ -208,13 +208,9 @@ func buildWASIWithOverrides(builder wazero.HostModuleBuilder, intercept intercep
 // ─── Override implementations ──────────────────────────────────────────────
 
 func doWritev(mem api.Memory, fd int32, iovs uint32, iovsCount uint32, intercept interceptor.SyscallInterceptor) (uint32, uint32) {
-	iovsBuf := make([]byte, iovsCount*8)
-	for i := uint32(0); i < iovsCount*8; i++ {
-		b, ok := mem.ReadByte(iovs + i)
-		if !ok {
-			return 0, wasiErrnoFault
-		}
-		iovsBuf[i] = b
+	iovsBuf, ok := mem.Read(iovs, iovsCount*8)
+	if !ok {
+		return 0, wasiErrnoFault
 	}
 
 	var total uint32
@@ -225,13 +221,9 @@ func doWritev(mem api.Memory, fd int32, iovs uint32, iovsCount uint32, intercept
 			continue
 		}
 
-		buf := make([]byte, length)
-		for j := uint32(0); j < length; j++ {
-			b, ok := mem.ReadByte(base + j)
-			if !ok {
-				return total, wasiErrnoFault
-			}
-			buf[j] = b
+		buf, ok := mem.Read(base, length)
+		if !ok {
+			return total, wasiErrnoFault
 		}
 
 		decision := intercept.OnWriteBuffer(fd, buf)
@@ -267,14 +259,10 @@ func wasiPathOpen(ctx context.Context, mod api.Module, stack []uint64, intercept
 	resultFD := uint32(stack[8])
 	mem := mod.Memory()
 
-	pathBytes := make([]byte, pathLen)
-	for i := uint32(0); i < pathLen; i++ {
-		b, ok := mem.ReadByte(pathOff + i)
-		if !ok {
-			stack[0] = uint64(wasiErrnoFault)
-			return
-		}
-		pathBytes[i] = b
+	pathBytes, ok := mem.Read(pathOff, pathLen)
+	if !ok {
+		stack[0] = uint64(wasiErrnoFault)
+		return
 	}
 	pathStr := string(pathBytes)
 
